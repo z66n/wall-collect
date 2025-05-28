@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o wally \
     wally.go
 
-RUN mkdir -p /app/uploads
+RUN mkdir -p /app/uploads && chown -R 65532:65532 /app/uploads
 
 # Final stage
 FROM gcr.io/distroless/static-debian11
