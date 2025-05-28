@@ -19,7 +19,7 @@
     workspace = {
       onCreate = {
         # Open editors for the following files by default, if they exist:
-        default.openFiles = ["server.go"];
+        default.openFiles = ["wally.go"];
       };
     };
     # Enable previews and customize configuration
@@ -32,7 +32,7 @@
             "--signal" "SIGHUP"
             "-w" "."
             "-e" "go,html"
-            "-x" "go run server.go -addr localhost:$PORT"
+            "-x" "go run wally.go -addr localhost:$PORT"
           ];
           manager = "web";
         };
