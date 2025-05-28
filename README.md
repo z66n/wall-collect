@@ -49,7 +49,7 @@ services:
     environment:
       UPLOAD_DIR: /app/uploads
       PORT: "8080"
-	restart: unless-stopped
+    restart: unless-stopped
 ```
 
 Start with:
