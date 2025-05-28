@@ -24,4 +24,4 @@ USER nonroot:nonroot
 EXPOSE 8080
 ENV UPLOAD_DIR=/app/uploads \
     PORT=8080
-CMD ["./wally", "-addr", ":$PORT"]
+CMD ["./wally", "-addr", "localhost:$PORT"]
