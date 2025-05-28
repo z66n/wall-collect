@@ -2,7 +2,7 @@
 
 A beautiful wallpaper collection manager built with Go. Upload, organize, view, and download your wallpaper collection with ease.
 
-![Screenshot](screenshot.png) <!-- Add a screenshot later -->
+![Screenshot](https://github.com/user-attachments/assets/f5b1b6e1-c5ef-4d65-b2f8-6f40cdeaca2b)
 
 ## Features ✨
 
