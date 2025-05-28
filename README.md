@@ -16,7 +16,6 @@ A beautiful wallpaper collection manager built with Go. Upload, organize, view, 
 
 ### Prerequisites
 - Go 1.21+ installed
-- Firebase account (if using Firebase hosting)
 
 ### Local Development
 1. Clone the repository:
