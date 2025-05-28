@@ -5,13 +5,15 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 COPY *.go ./
-COPY uploads/ ./
+
 
 # Build the binary (remove inline comments and fix line continuations)
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s" \
     -o wally \
     wally.go
+
+RUN mkdir -p /app/uploads
 
 # Final stage
 FROM gcr.io/distroless/static-debian11
