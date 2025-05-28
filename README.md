@@ -25,10 +25,12 @@ docker pull ghcr.io/z66n/wall-collect
 
 # Run with persistent storage
 docker run -d \
+  -u 1000:1000 \
   -p 8080:8080 \
   -v ./wallpapers:/app/uploads \
   -e UPLOAD_DIR=/app/uploads \
   --name wall-collect \
+  --restart unless-stopped \
   ghcr.io/z66n/wall-collect
 ```
 Access at: `http://localhost:8080`
@@ -42,6 +44,7 @@ services:
   wall-collect:
     image: ghcr.io/z66n/wall-collect
     container_name: wall-collect
+    user: "1000:1000"
     ports:
       - "8080:8080"
     volumes:
