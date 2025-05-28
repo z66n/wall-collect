@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/wall-collect
+  IMAGE_NAME: z66n/wall-collect
 
 jobs:
   build-and-test:
