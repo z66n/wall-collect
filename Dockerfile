@@ -18,8 +18,8 @@ RUN mkdir -p /app/uploads
 # Final stage
 FROM gcr.io/distroless/static-debian11
 WORKDIR /app
-COPY --chown=65532:65532 --from=builder /app/wally .
-COPY --chown=65532:65532 --from=builder /app/uploads ./uploads
+COPY --from=builder /app/wally .
+COPY --from=builder /app/uploads ./uploads
 USER nonroot:nonroot
 EXPOSE 8080
 ENV UPLOAD_DIR=/app/uploads \
