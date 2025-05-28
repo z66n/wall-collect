@@ -6,29 +6,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
 
-# Build the binary with optimizations
+# Build the binary (remove inline comments and fix line continuations)
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s" \  # Strip debug symbols
-    -o wally \         # Output name matches your file
-    wally.go           # Builds your main wally file
+    -ldflags="-w -s" \
+    -o wally \
+    wally.go
 
-# Final stage - ultra slim image
+# Final stage
 FROM gcr.io/distroless/static-debian11
-
 WORKDIR /app
-
-# Copy only the built binary
 COPY --from=builder /app/wally .
 COPY --from=builder /app/uploads ./uploads
-
-# Non-root user for security
 USER nonroot:nonroot
-
-# Environment variables (customize as needed)
+EXPOSE 8080
 ENV UPLOAD_DIR=/app/uploads \
     PORT=8080
-
-EXPOSE 8080
-
-# Entrypoint matches your binary name
-ENTRYPOINT ["./wally", "-addr", ":$PORT"]
+CMD ["./wally", "-addr", ":$PORT"]
