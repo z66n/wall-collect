@@ -8,7 +8,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: z66n/wall-collect
 
 jobs:
   build-and-test:
@@ -22,11 +21,19 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Cache Go build
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-
+
       - name: Run tests
         run: go test -v ./...
 
       - name: Build Docker image
-        run: docker build -t $IMAGE_NAME .
+        run: docker build -t ${{ github.repository }} .
 
   deploy:
     needs: build-and-test
@@ -43,7 +50,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
