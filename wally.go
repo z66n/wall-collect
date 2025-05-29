@@ -21,6 +21,11 @@ var (
 	addr       string // Changed from port to addr for consistency
 )
 
+// For http.Handler
+func basicAuthHandler(next http.Handler) http.Handler {
+    return basicAuth(next.ServeHTTP)
+}
+
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         username, password, ok := r.BasicAuth()
@@ -71,8 +76,10 @@ func main() {
 	http.HandleFunc("/rename/", basicAuth(renameHandler))
 	http.HandleFunc("/view/", basicAuth(viewHandler))
 	http.HandleFunc("/download/", basicAuth(downloadHandler))
-	http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(uploadPath))))
-	
+	http.Handle("/images/", basicAuthHandler(
+		http.StripPrefix("/images/", http.FileServer(http.Dir(uploadPath))),
+	))
+		
 	log.Printf("Wallpaper manager running on http://%s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
