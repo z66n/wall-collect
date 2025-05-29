@@ -1,0 +1,12 @@
+services:
+  wall-collect:
+    image: ghcr.io/z66n/wall-collect
+    container_name: wall-collect
+    user: "1000:1000"
+    ports:
+        - 8080:8080
+    volumes:
+        - /path/to/wallpapers:/app/uploads
+    env_file:
+        - .env
+    restart: unless-stopped

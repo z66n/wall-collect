@@ -21,6 +21,30 @@ var (
 	addr       string // Changed from port to addr for consistency
 )
 
+func basicAuth(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        username, password, ok := r.BasicAuth()
+        
+        expectedUsername := os.Getenv("AUTH_USERNAME")
+        expectedPassword := os.Getenv("AUTH_PASSWORD")
+        
+        if expectedUsername == "" {
+            expectedUsername = "admin"
+        }
+        if expectedPassword == "" {
+            expectedPassword = "password"
+        }
+        
+        if !ok || username != expectedUsername || password != expectedPassword {
+            w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+            http.Error(w, "Unauthorized", http.StatusUnauthorized)
+            return
+        }
+        
+        next(w, r)
+    }
+}
+
 func main() {
 	flag.StringVar(&uploadPath, "upload-dir", defaultUploadPath, "Directory to store wallpapers")
 	flag.StringVar(&addr, "addr", "", "Address to serve (format: [host]:port)")
@@ -41,14 +65,14 @@ func main() {
 		log.Fatalf("Failed to create upload directory: %v", err)
 	}
 
-	http.HandleFunc("/", listWallpapers)
-	http.HandleFunc("/upload", uploadHandler)
-	http.HandleFunc("/delete/", deleteHandler)
-	http.HandleFunc("/rename/", renameHandler)
-	http.HandleFunc("/view/", viewHandler)
-	http.HandleFunc("/download/", downloadHandler)
+	http.HandleFunc("/", basicAuth(listWallpapers))
+	http.HandleFunc("/upload", basicAuth(uploadHandler))
+	http.HandleFunc("/delete/", basicAuth(deleteHandler))
+	http.HandleFunc("/rename/", basicAuth(renameHandler))
+	http.HandleFunc("/view/", basicAuth(viewHandler))
+	http.HandleFunc("/download/", basicAuth(downloadHandler))
 	http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(uploadPath))))
-
+	
 	log.Printf("Wallpaper manager running on http://%s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
