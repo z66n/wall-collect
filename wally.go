@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -9,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -23,31 +27,56 @@ var (
 
 // For http.Handler
 func basicAuthHandler(next http.Handler) http.Handler {
-    return basicAuth(next.ServeHTTP)
+	return basicAuth(next.ServeHTTP)
 }
 
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        username, password, ok := r.BasicAuth()
-        
-        expectedUsername := os.Getenv("AUTH_USERNAME")
-        expectedPassword := os.Getenv("AUTH_PASSWORD")
-        
-        if expectedUsername == "" {
-            expectedUsername = "admin"
-        }
-        if expectedPassword == "" {
-            expectedPassword = "password"
-        }
-        
-        if !ok || username != expectedUsername || password != expectedPassword {
-            w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-            http.Error(w, "Unauthorized", http.StatusUnauthorized)
-            return
-        }
-        
-        next(w, r)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+
+		expectedUsername := os.Getenv("AUTH_USERNAME")
+		expectedPassword := os.Getenv("AUTH_PASSWORD")
+
+		if expectedUsername == "" {
+			expectedUsername = "admin"
+		}
+		if expectedPassword == "" {
+			expectedPassword = "password"
+		}
+
+		if !ok || username != expectedUsername || password != expectedPassword {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// helpers
+func isValidFilename(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return false
+	}
+	// Optional: disallow hidden files
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	return true
+}
+
+func generateSafeFileName(ext string) string {
+	// Prefer crypto/rand
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err == nil {
+		return hex.EncodeToString(bytes) + ext
+	}
+	// Fallback (should rarely happen)
+	return fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 }
 
 func main() {
@@ -79,7 +108,7 @@ func main() {
 	http.Handle("/images/", basicAuthHandler(
 		http.StripPrefix("/images/", http.FileServer(http.Dir(uploadPath))),
 	))
-		
+
 	log.Printf("Wallpaper manager running on http://%s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
@@ -87,6 +116,10 @@ func main() {
 // New download handler function
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/download/")
+	if !isValidFilename(filename) {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
 	if filename == "" {
 		http.Error(w, "Filename required", http.StatusBadRequest)
 		return
@@ -190,51 +223,92 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form with 50MB limit (for multiple files)
-	if err := r.ParseMultipartForm(50 << 20); err != nil {
-		http.Error(w, "Total upload size too large (max 50MB)", http.StatusBadRequest)
+	reader, err := r.MultipartReader()
+	if err != nil {
+		http.Error(w, "Invalid multipart request", http.StatusBadRequest)
 		return
 	}
 
-	// Get all files from the "images" field (now supports multiple)
-	files := r.MultipartForm.File["images"]
-	if len(files) == 0 {
-		http.Error(w, "No files uploaded", http.StatusBadRequest)
-		return
-	}
+	const maxTotalSize = 50 << 20 // 50MB
+	var totalBytes int64
+	successCount := 0
 
-	var successCount int
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, err)
+			log.Printf("Error reading multipart part: %v", err)
+			http.Error(w, "Upload corrupted", http.StatusBadRequest)
+			return
+		}
+
+		if part.FormName() != "images" {
+			part.Close()
 			continue
 		}
 
-		// Create destination file
-		dstPath := filepath.Join(uploadPath, filepath.Base(fileHeader.Filename))
+		filename := part.FileName()
+		if filename == "" {
+			part.Close()
+			continue
+		}
+
+		// Validate extension (optional but recommended)
+		ext := filepath.Ext(filename)
+		switch strings.ToLower(ext) {
+		case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
+			// allowed
+		default:
+			log.Printf("Rejected file with invalid extension: %s", filename)
+			part.Close()
+			continue
+		}
+
+		safeName := generateSafeFileName(ext)
+		dstPath := filepath.Join(uploadPath, safeName)
+
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			log.Printf("Failed to create file %s: %v", dstPath, err)
-			file.Close()
+			part.Close()
 			continue
 		}
 
-		// Copy the file
-		if _, err := io.Copy(dst, file); err != nil {
-			log.Printf("Failed to save file %s: %v", dstPath, err)
-			file.Close()
-			dst.Close()
-			continue
-		}
+		// Optional: limit per-file size (e.g., 20MB)
+		const maxFileSize = 20 << 20
+		limitReader := io.LimitReader(part, maxFileSize)
 
-		file.Close()
+		n, err := io.Copy(dst, limitReader)
 		dst.Close()
+		part.Close()
+
+		if err != nil {
+			os.Remove(dstPath)
+			log.Printf("Failed to write file %s: %v", dstPath, err)
+			continue
+		}
+
+		// Check if file hit limit (means it was too big)
+		if n == maxFileSize {
+			os.Remove(dstPath)
+			log.Printf("File too large: %s", filename)
+			continue
+		}
+
+		totalBytes += n
+		if totalBytes > maxTotalSize {
+			os.Remove(dstPath)
+			http.Error(w, "Total upload size too large", http.StatusBadRequest)
+			return
+		}
+
 		successCount++
 	}
 
 	if successCount == 0 {
-		http.Error(w, "Failed to save all files", http.StatusInternalServerError)
+		http.Error(w, "No valid files saved", http.StatusInternalServerError)
 		return
 	}
 
@@ -248,6 +322,10 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := strings.TrimPrefix(r.URL.Path, "/delete/")
+	if !isValidFilename(filename) {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
 	if filename == "" {
 		http.Error(w, "Filename required", http.StatusBadRequest)
 		return
@@ -269,6 +347,10 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 func renameHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/rename/")
+	if !isValidFilename(filename) {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
 	if filename == "" {
 		http.Error(w, "Filename required", http.StatusBadRequest)
 		return
@@ -307,8 +389,8 @@ func renameHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		// Process rename
 		newName := r.FormValue("newname")
-		if newName == "" {
-			http.Error(w, "New name required", http.StatusBadRequest)
+		if newName == "" || strings.Contains(newName, "/") || strings.HasPrefix(newName, ".") {
+			http.Error(w, "Invalid filename", http.StatusBadRequest)
 			return
 		}
 
@@ -328,6 +410,10 @@ func renameHandler(w http.ResponseWriter, r *http.Request) {
 // Updated viewHandler template with download button
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/view/")
+	if !isValidFilename(filename) {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
 	if filename == "" {
 		http.Error(w, "Filename required", http.StatusBadRequest)
 		return
